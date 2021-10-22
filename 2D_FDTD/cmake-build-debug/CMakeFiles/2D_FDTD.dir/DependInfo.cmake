@@ -8,9 +8,9 @@ set(CMAKE_DEPENDS_LANGUAGES
   )
 # The set of files for implicit dependencies of each language:
 set(CMAKE_DEPENDS_CHECK_CXX
-  "/Users/williampoland/Documents/GitHub/FDTD/2D_FDTD/main.cpp" "/Users/williampoland/Documents/GitHub/FDTD/2D_FDTD/cmake-build-debug/CMakeFiles/2D_FDTD.dir/main.cpp.o"
+  "C:/Users/William Poland/Documents/GitHub/FDTD/2D_FDTD/main.cpp" "C:/Users/William Poland/Documents/GitHub/FDTD/2D_FDTD/cmake-build-debug/CMakeFiles/2D_FDTD.dir/main.cpp.obj"
   )
-set(CMAKE_CXX_COMPILER_ID "AppleClang")
+set(CMAKE_CXX_COMPILER_ID "GNU")
 
 # The include file search paths:
 set(CMAKE_CXX_TARGET_INCLUDE_PATH
