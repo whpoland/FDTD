@@ -3,8 +3,8 @@
 #include <cmath>
 
 /* define mathematical constants */
-#define C 3*pow(10,8)
-#define EPS_0 8.85*pow(10,-12)
+#define C 300000000
+#define EPS_0 0.00000000000885
 #define MU_0 4*M_PI*pow(10,-7)
 
 /* CUSTOMIZABLE VALUES */
@@ -13,8 +13,6 @@
 #define EPS_R 1
 #define MU_R 1
 #define NUM_LENGTHS 50 // how many wavelengths
-#define ELEC_COND 0
-#define MAG_COND 0
 
 /* calculate some useful values based on inputs */
 #define EPS EPS_0*EPS_R
@@ -34,6 +32,7 @@ struct field {
     double x[N];
     double y[N];
     double z[N];
+    double c[N];
 };
 
 /* function headers */
@@ -51,10 +50,8 @@ int main() {
     std::cout << "Hello, World!" << std::endl;
     field E;
     field H;
-    field J;
-    field M;
-    field EC;
-    field MC;
+    field J; //this needs a different struct
+    field M; // this needs a different struct
 
     // run the simulation and store in file
     compute(&E, &H, &J, &M);
