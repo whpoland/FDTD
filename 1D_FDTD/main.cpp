@@ -109,9 +109,9 @@ double updateHx(int t, int delta, field* E, field *H, current* J, current* M) {
 void compute(field *E, field *H, current *J, current *M, parameters *params) {
     // time-stepping loop
     int t;
-    std::string output_file = "/Users/williampoland/FDTD Output/FDTDdie.txt";
-//    std::string output_file = "/Users/williampoland/FDTD Output/FDTD3.txt";
-//    std::string output_file = "/Users/williampoland/FDTD Output/FDTDadd.txt";
+    std::string output_file = "/Users/williampoland/FDTD/1D/die.txt";
+//    std::string output_file = "/Users/williampoland/FDTD/1D/cond.txt";
+//    std::string output_file = "/Users/williampoland/FDTD/1D/add.txt";
     std::ofstream myfile (output_file);
 
     for (t = 0; t < T_MAX; t++) {
