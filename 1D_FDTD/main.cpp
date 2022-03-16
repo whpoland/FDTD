@@ -23,7 +23,7 @@
 //#define Z_MAX Y_MAX
 //#define N (int)ceil(X_MAX/DX)
 
-#define T_MAX 800
+#define T_MAX 500
 #define N 400 // the number of elements we will track at a time
 
 
@@ -32,7 +32,7 @@ struct field {
     double x[N]; // x component
     double y[N]; // y component
     double z[N]; // z component
-    double c[N]; // conductivity
+
 };
 
 // Create a struct template for J,M fields (to contain x,y,z components)
@@ -40,8 +40,10 @@ struct current {
     double x[N]; // x component
     double y[N]; // y component
     double z[N]; // z component
+
 };
 
+// Parameters of the medium
 struct parameters {
     double eps[N]; // relative permittivity
     double mu[N]; // relative permeability
@@ -50,19 +52,12 @@ struct parameters {
 };
 
 /* function headers */
-double numDeriv(double* arr, int i, int delta);
-double updateEx(int t, int delta, field* E, field *H, current* J, current* M);
-double updateEy(int t, int delta, field* E, field *H, current* J, current* M);
-double updateEz(int t, int delta, field* E, field *H, current* J, current* M);
-double updateHx(int t, int delta, field* E, field *H, current* J, current* M);
-double updateHy(int t, int delta, field* E, field *H, current* J, current* M);
-double updateHz(int t, int delta, field* E, field *H, current* J, current* M);
 void compute(field *E, field *H, current *J, current *M, parameters *params);
 
 int main() {
 //  Initialize fields
-    field E = {{0.},{0.},{0.},{0.}};
-    field H = {{0.},{0.},{0.},{0.}};
+    field E = {{0.},{0.},{0.}};
+    field H = {{0.},{0.},{0.}};
     current J = {{0.},{0.},{0.}};
     current M = {{0.},{0.},{0.}};
     parameters  params = {{0.},{0.},{0.},{0.}};
@@ -73,20 +68,13 @@ int main() {
         params.ec[i] = 0;
         params.mc[i] = 0;
         if (i < N/2) {
-            params.eps[i] = 10;
+//            params.eps[i] = 1;
+//            params.ec[i] = 20;
+        }
+        else {
+//            params.eps[i] = 10;
         }
     }
-
-//    params.ec[100] = 100;
-
-//    std::cout << std::endl;
-//    std::cout << "EPS0: " << EPS_0 << " MU0: " << MU_0 << " DT: " << DT << " DX: " << DX << std::endl;
-//    std::cout << "DT/DX: " << DT / DX << std::endl;
-//    std::cout << "LAMBDA: " << LAMBDA << std::endl;
-//    std::cout << "C: " << C << std::endl;
-//    std::cout << "DT/MU/DX: " << DT / MU_0 / DX << std::endl;
-//    std::cout << "DT/EPS/DX: " << DT / EPS_0 / DX << std::endl;
-
 
     // run the simulation and store in file
     compute(&E, &H, &J, &M, &params);
@@ -94,48 +82,59 @@ int main() {
     return 0;
 }
 
-double numDeriv(double* arr, int i, int delta) {
-    return (arr[i + delta/2] + arr[i - delta/2])/delta;
-}
-
-double updateEx(int t, int delta, field* E, field *H, current* J, current* M) {
-
-}
-
-double updateHx(int t, int delta, field* E, field *H, current* J, current* M) {
-//    H->x[t - delta/2] + delta/MU*(numDeriv(E->z, t, delta) + M->x[t] + H->c[t]*H->x[t])
-}
-
 void compute(field *E, field *H, current *J, current *M, parameters *params) {
     // time-stepping loop
     int t;
-    std::string output_file = "/Users/williampoland/FDTD/1D/die.txt";
-//    std::string output_file = "/Users/williampoland/FDTD/1D/cond.txt";
-//    std::string output_file = "/Users/williampoland/FDTD/1D/add.txt";
+    std::string output_file = "/Users/williampoland/FDTD/1D/midsrc_ABC.txt";
     std::ofstream myfile (output_file);
+
+    // initialize variables for boundary conditions
+    double Ez1_old = 0; // we will use this to store past values of E->z[1]
+    double EzNm2_old = 0; //E->z[N-2]
 
     for (t = 0; t < T_MAX; t++) {
         // step 1 - [TE] Hx, Hy, Ez
         int x;
         for (x = 0; x < N - 1; x++) {
-//            H->y[x] += (E->z[x + 1] - E->z[x]) * DT / MU_0 / params->mu[x] / DX;
 //            H->y[x] += (E->z[x+1] - E->z[x]) * DT / MU_0 / params->mu[x] / DX;
             H->y[x] += DT / MU_0 / params->mu[x] * ((E->z[x+1] - E->z[x]) / DX + H->y[x] * params->mc[x] + M->y[x]);
             //never reaches Hy[N-1], so this node stays 0 -- PMC
         }
-        // step 2 - [TM] Ex, Ey, Hz
+
         for (x = 1; x < N; x++) {
-//            E->z[x] += (H->y[x] - H->y[x - 1]) * DT / EPS_0 / DX;
 //            E->z[x] += (H->y[x] - H->y[x-1]) * DT / EPS_0 / params->eps[x] / DX;
             E->z[x] += DT / EPS_0 / params->eps[x] * ((H->y[x] - H->y[x-1]) / DX - E->z[x] * params->ec[x] - J->z[x]);
+            //never reaches Ez[0], so this node stays 0 -- PEC
         }
+        // step 2 - [TM] Ex, Ey, Hz
+
+
         /* hardwire a source node */
         // this makes Ez[0] follow a  wave shape, forcing the simulation to create a wave
 //        E->z[0] = exp(-(t - 30.) * (t - 30.) / 100.);
 
         /* additive source node */
-        E->z[N - 1] += exp(-(t - 30.) * (t - 30.) / 100.);
+        // middle of grid
+        E->z[N/2] += exp(-(t - 30.) * (t - 30.) / 100.);
 
+        // end of grid
+//        E->z[N - 1] += exp(-(t - 30.) * (t - 30.) / 100.);
+
+
+        /* boundary conditions*/
+        // 1st order ABC at x = 0
+        double coef = C * DT / DX / sqrt(params->eps[0]*params->mu[0]);
+        E->z[0] = Ez1_old + (coef - 1) / (coef + 1) * (E->z[1]- E->z[0]); // update boundaries
+        E->z[N-1] = EzNm2_old + (coef - 1) / (coef + 1) * (E->z[N-2]- E->z[N-1]);
+        Ez1_old = E->z[1]; // update past values
+        EzNm2_old = E->z[N-2];
+
+        // 2nd order ABC at x = 0
+//        double coef1 = C * DT / DX;
+//        double coef2 = coef1 / sqrt(params->eps[0]*params->mu[0]);
+//        E->z[0] = -1 / (1/coef2 + 2 + coef2) * ((1/coef2 - 2 + coef2)*(E->z[2]+E->z[0])+2*(coef2 - 1/coef2)*() - 4*(1/coef2 +coef2)*E->z[1])- E->z[2];
+
+        // now write relevant data to file
         if (myfile.is_open())
         {
             for (x = 0; x < N; x++)

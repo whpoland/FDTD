@@ -1,9 +1,7 @@
 file(REMOVE_RECURSE
-  "2D_FDTD.exe"
-  "2D_FDTD.exe.manifest"
+  "2D_FDTD"
   "2D_FDTD.pdb"
-  "CMakeFiles/2D_FDTD.dir/main.cpp.obj"
-  "lib2D_FDTD.dll.a"
+  "CMakeFiles/2D_FDTD.dir/main.cpp.o"
 )
 
 # Per-language clean rules from dependency scanning.

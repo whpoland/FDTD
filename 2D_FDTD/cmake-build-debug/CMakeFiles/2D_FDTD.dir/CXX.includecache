@@ -6,7 +6,7 @@
 
 #IncludeRegexTransform: 
 
-C:/Users/William Poland/Documents/GitHub/FDTD/2D_FDTD/main.cpp
+/Users/williampoland/Documents/GitHub/FDTD/2D_FDTD/main.cpp
 iostream
 -
 fstream
