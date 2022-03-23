@@ -32,10 +32,11 @@
 
 #define T_MAX 100 // how long the simulation will run
 //#define N (int)(FRAC * 3 / 2) // spatial size of grid
-#define N 100
+#define N 61
 #define NX N
 #define NY NX
 
+//const int T_MAX, N, NX, NY;
 
 // Create a struct template for E,H fields (to contain x,y,z,cond components)
 struct field {
@@ -47,18 +48,18 @@ struct field {
 
 // Create a struct template for J,M fields (to contain x,y,z components)
 struct current {
-    double x[N]; // x component
-    double y[N]; // y component
-    double z[N]; // z component
+    double x[NX]; // x component
+    double y[NX]; // y component
+    double z[NX]; // z component
 
 };
 
 // Parameters of the medium
 struct parameters {
-    double eps[N]; // relative permittivity
-    double mu[N]; // relative permeability
-    double ec[N]; // electrical conductivity
-    double mc[N]; // magnetic conductivity
+    double eps[NX][NY]; // relative permittivity
+    double mu[NX]; // relative permeability
+    double ec[NX][NY]; // electrical conductivity
+    double mc[NX]; // magnetic conductivity
 };
 
 /* function headers */
@@ -74,19 +75,22 @@ int main() {
     field H = {{0.,0.},{0.,0. },{0.,0. }};
     current J = {{0.},{0.},{0.}};
     current M = {{0.},{0.},{0.}};
-    parameters  params = {{0.},{0.},{0.},{0.}};
+    parameters  params = {{0., 0.},{0.},{0., 0.},{0.}};
 
-    for (int i = 0; i < N; i++) {
-        params.eps[i] = 1;
-        params.mu[i] = 1;
-        params.ec[i] = 0;
-        params.mc[i] = 0;
-        if (i < N/2) {
-//            params.eps[i] = 1;
-//            params.ec[i] = 20;
-        }
-        else {
-//            params.eps[i] = 10;
+    int i, j;
+    for (i = 0; i < NX; i++) {
+        for (j = 0; j < NY; j++) {
+            params.eps[i][j] = 1;
+            params.mu[i] = 1;
+            params.ec[i][j] = 0;
+            params.mc[i] = 0;
+            if (i > NX / 2) {
+//                params.eps[i][j] = 3;
+//                params.ec[i][j] = 1;
+            }
+//            else {
+//                params.eps[i] = 10;
+//            }
         }
     }
 
@@ -100,7 +104,7 @@ void compute(field *E, field *H, current *J, current *M, parameters *params) {
     // time-stepping loop
     std::cout << "Starting Simulation..." << std::endl;
     int t;
-    std::string test_name = "basic_sine1Hz";
+    std::string test_name = "sine_src";
     std::string output_file = "/Users/williampoland/FDTD/2D/raw/" + test_name + ".txt";
     std::ofstream myfile (output_file);
     myfile << "T_MAX; NX; NY" << std::endl;
@@ -109,73 +113,149 @@ void compute(field *E, field *H, current *J, current *M, parameters *params) {
     myfile << "(t, x, y, Ez)" << std::endl;
 
     // initialize variables for boundary conditions
-//    double Ez1_old = 0; // we will use this to store past values of E->z[1]
-//    double EzNm2_old = 0; //E->z[N-2]
+    // these will store the past values of for edges of grid
+    // 1st index - displacement from edge of boundary
+    // 2nd index - previous time displacement
+    // 3rd index - location along boundary
+    const int num_disp = 3, time_disp = 2;
+    double Ez_old_up[num_disp][time_disp][NX] = {0.,0.}, Ez_old_down[num_disp][time_disp][NX] = {0.,0.},
+        Ez_old_left[num_disp][time_disp][NY] = {0.,0.}, Ez_old_right[num_disp][time_disp][NY] ={0.,0.};
 
     for (t = 0; t < T_MAX; t++) {
         int x, y;
         // step 1 - [TMz] Hx, Hy, Ez
 
         // Update HX
-        double C_Hx_H, C_Hx_E; // coefficients for Hx
+        double cf_Hx, C_Hx_H, C_Hx_E; // coefficients for Hx
         for (x = 0; x < NX ; x++) {
             for (y = 0; y < NY - 1; y++) {
-                C_Hx_H = 1;
-                C_Hx_E =  DT / MU_0 / DX;
-                H->x[x][y] += -C_Hx_E * (E->z[x][y+1] - E->z[x][y]);
-//                H->x[x][y] = (1. - C_Hx) / (1. + C_Hx) * H->x[x][y]
-//                        - DT / (1. + C_Hx) / DY / MU_0 / params->mu[x] * (E->z[x][y+1] - E->z[x][y]);
+                cf_Hx = params->mc[x] * DT / 2 / MU_0 / params->mu[x];
+                C_Hx_H = (1 - cf_Hx) / (1 + cf_Hx);
+                C_Hx_E =  DT / MU_0 / params->mu[x] / DX / (1 + cf_Hx);
+
+                H->x[x][y] = C_Hx_H * H->x[x][y] - C_Hx_E * (E->z[x][y+1] - E->z[x][y]);
             }
         }
 
         // Update HY
-        double C_Hy_H, C_Hy_E; // coefficients for Hy
+        double cf_Hy, C_Hy_H, C_Hy_E; // coefficients for Hy
         for (x = 0; x < NX - 1 ; x++) {
             for (y = 0; y < NY; y++) {
-                C_Hy_H = 1;
-                C_Hy_E = DT / MU_0 / DY;
-                H->y[x][y] += C_Hy_E * (E->z[x+1][y] - E->z[x][y]);
-//                H->y[x][y] = (1. - C_Hy) / (1. + C_Hy) * H->y[x][y]
-//                        + DT / (1. + C_Hy) / DX / MU_0 / params->mu[x] * (E->z[x][y+1] - E->z[x][y]);
+                cf_Hy = params->mc[x] * DT / 2 / MU_0 / params->mu[x];
+                C_Hy_H = (1 - cf_Hy) / (1 + cf_Hy);
+                C_Hy_E = DT / MU_0 / params->mu[x] / DY / (1 + cf_Hy);
+
+                H->y[x][y] = C_Hy_H * H->y[x][y] + C_Hy_E * (E->z[x+1][y] - E->z[x][y]);
             }
         }
 
         // Update EZ
-        double C_Ez_E, C_Ez_H;
+        double cf_Ez, C_Ez_E, C_Ez_H;
         for (x = 1; x < NX - 1; x++) {
             for (y = 1; y < NY - 1; y++) {
-                C_Ez_E = 1;
-                C_Ez_H = DT / EPS_0 / DX;
-                E->z[x][y] += C_Ez_H * ((H->y[x][y] - H->y[x-1][y]) - (H->x[x][y] - H->x[x][y-1]));
-//                E->z[x][y] = (1. - C_Ez) / (1. + C_Ez) * E->z[x][y]
-//                        + DT / (1. + C_Ez) / params->eps[x] * (1. / DX / EPS_0 / params->eps[x] * (H->y[x][y] - H->y[x-1][y])
-//                        - 1. / DY / EPS_0 / params->eps[x] * (H->x[x][y] - H->x[x][y-1]));
+                cf_Ez = params->ec[x][y] * DT / 2 / EPS_0 / params->eps[x][y];
+                C_Ez_E = (1 - cf_Ez) / (1 + cf_Ez);
+                C_Ez_H = DT / EPS_0 / params->eps[x][y] / DY / (1 + cf_Ez);
+
+                E->z[x][y] = C_Ez_E * E->z[x][y] + C_Ez_H * ((H->y[x][y] - H->y[x-1][y]) - (H->x[x][y] - H->x[x][y-1]));
             }
         }
 
         /* create source node */
+        // Note: source nodes cannot be on boundaries x=0,x=NX,y=0,y=NY because of the absorbing boundaries
+        // Source nodes for grid edges should be placed one node from the edge of grid (i.e. x=1 or y=NY-1)
         int delay = 0;
-        int width = N/4;
+        int width = N/16;
         // hard-wired source
-//        E->z[0][0] = exp(-(t - 30.) * (t - 30.) / 100.);
-//        E->z[NX/2][NY/2] = exp(-(t - delay) * (t - delay) / width);
+//        E->z[1][1] = exp(-(t - 30.) * (t - 30.) / 100.);
+//        E->z[NX/2][NY/2] = 1.5 * exp(-(t - delay) * (t - delay) / width);
 //            E->z[NX/2][NY/2] = 1;
 //        E->z[NX/2][NY/2] = sin(CNO*BETA*t);
         E->z[NX/2][NY/2] = sin(1*t);
+        // vertical plane wave
+//        for (int i = 0; i < NX; i++) {
+////            E->z[i][0] = sin(t);
+//            E->z[i][1] = exp(-(t - delay) * (t - delay) / width);
+//        }
+        // horizontal plane wave
+//        for (int j = 0; j < NY; j++) {
+//            E->z[1][j] = sin(0.5 * t);
+////           E->z[1][j] = 1.5 * exp(-(t - delay) * (t - delay) / width);
+//        }
         // additive source
-//        E->z[NX/2][NY/2] += exp(-(t - delay) * (t - delay) / width);
+//        E->z[NX/2][NY/2] += 1.5*exp(-(t - delay) * (t - delay) / width);
+
+
+
+
+        /* second order ABCs for x = 0, x = NX, y = 0, y = NY */
+        // calculate coefficients
+        cf_Ez = params->ec[0][0] * DT / 2 / EPS_0 / params->eps[0][0];
+        C_Ez_H = DT / EPS_0 / params->eps[0][0] / DY / (1 + cf_Ez);
+
+        cf_Hy = params->mc[0] * DT / 2 / MU_0 / params->mu[0];
+        C_Hy_E = DT / MU_0 / params->mu[0] / DY / (1 + cf_Hy);
+
+        double temp1 = sqrt(C_Ez_H * C_Hy_E);
+        double temp2 = 1. / temp1 +  2. + temp1;
+        double cf0 = -(1. / temp1 - 2. + temp1) / temp2;
+        double cf1 = -2. * (temp1 - 1. / temp1) / temp2;
+        double cf2 = 4. * (temp1 + 1. / temp1) / temp2;
+
+        // ABCs @ x=0 & x=NX
+        for (y = 0; y < NY; y++) {
+            // calculate ABC @ x=0
+            E->z[0][y] = cf0 * (E->z[2][y] + Ez_old_left[0][1][y])
+                + cf1 * (Ez_old_left[0][0][y] + Ez_old_left[2][0][y] - E->z[1][y] - Ez_old_left[1][1][y])
+                + cf2 * Ez_old_left[1][0][y]
+                - Ez_old_left[2][1][y];
+            // update old values @ x=0
+            for (x = 0; x < 3; x++) {
+                Ez_old_left[x][1][y] = Ez_old_left[x][0][y];
+                Ez_old_left[x][0][y] = E->z[x][y];
+            }
+
+            // calculate ABC @ x=NX
+            E->z[NX - 1][y] = cf0 * (E->z[NX - 3][y] + Ez_old_right[0][1][y])
+                + cf1 * (Ez_old_right[0][0][y] + Ez_old_right[2][0][y] - E->z[NX - 2][y] - Ez_old_right[1][1][y])
+                + cf2 * Ez_old_right[1][0][y]
+                - Ez_old_right[2][1][y];
+            // update old values @ x=0
+            for (x = 0; x < 3; x++) {
+                Ez_old_right[x][1][y] = Ez_old_right[x][0][y];
+                Ez_old_right[x][0][y] = E->z[NX - 1 - x][y];
+            }
+        }
+        // ABCs @ y=0 & y=NY
+        for (x = 0; x <NX; x++) {
+            // calculate ABC @ y=0
+            E->z[x][0] = cf0 * (E->z[x][2] + Ez_old_down[0][1][x])
+                + cf1 * (Ez_old_down[0][0][x] + Ez_old_down[2][0][x] - E->z[x][1] - Ez_old_down[1][1][x])
+                + cf2 * Ez_old_down[1][0][x]
+                - Ez_old_down[2][1][x];
+            // update old values @ y=0
+            for (y = 0; y < 3; y++) {
+                Ez_old_down[y][1][x] = Ez_old_down[y][0][x];
+                Ez_old_down[y][0][x] = E->z[x][y];
+            }
+
+            // calculate ABC @ y=NY
+            E->z[x][NY - 1] = cf0 * (E->z[x][NY - 3] + Ez_old_up[0][1][x])
+                + cf1 * (Ez_old_up[0][0][x] + Ez_old_up[2][0][x] - E->z[x][NY - 2] - Ez_old_up[1][1][x])
+                + cf2 * Ez_old_up[1][0][x]
+                - Ez_old_up[2][1][x];
+            // update old values @ y=0
+            for (y = 0; y < 3; y++) {
+                Ez_old_up[y][1][x] = Ez_old_up[y][0][x];
+                Ez_old_up[y][0][x] = E->z[x][NY - 1 - y];
+            }
+        }
 
 
 
 
 
-        /* boundary conditions*/
-        // 1st order ABC at x = 0
-//        double coef = C * DT / DX / sqrt(params->eps[0]*params->mu[0]);
-//        E->z[0] = Ez1_old + (coef - 1) / (coef + 1) * (E->z[1]- E->z[0]); // update boundaries
-//        E->z[N-1] = EzNm2_old + (coef - 1) / (coef + 1) * (E->z[N-2]- E->z[N-1]);
-//        Ez1_old = E->z[1]; // update past values
-//        EzNm2_old = E->z[N-2];
+//        for (int)
 
         // now write relevant data to file
         if (myfile.is_open())
