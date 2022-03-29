@@ -19,7 +19,8 @@
 
 /* calculate useful values */
 #define LAMBDA (C/FREQ) // wavelength
-#define BETA (2*M_PI*FREQ/C) // phase constant
+#define OMEGA (2*M_PI*FREQ)
+#define BETA (OMEGA/C) // phase constant
 
 /* define bounds of our simulation */
 #define DX (LAMBDA/FRAC)
@@ -30,9 +31,9 @@
 //#define Z_MAX Y_MAX
 //#define N (int)ceil(X_MAX/DX)
 
-#define T_MAX 100 // how long the simulation will run
+#define T_MAX 200 // how long the simulation will run
 //#define N (int)(FRAC * 3 / 2) // spatial size of grid
-#define N 61
+#define N 101
 #define NX N
 #define NY NX
 
@@ -60,6 +61,8 @@ struct parameters {
     double mu[NX]; // relative permeability
     double ec[NX][NY]; // electrical conductivity
     double mc[NX]; // magnetic conductivity
+    int src_x; // x coordinate of source
+    int src_y; // y coordinate of source
 };
 
 /* function headers */
@@ -75,7 +78,11 @@ int main() {
     field H = {{0.,0.},{0.,0. },{0.,0. }};
     current J = {{0.},{0.},{0.}};
     current M = {{0.},{0.},{0.}};
-    parameters  params = {{0., 0.},{0.},{0., 0.},{0.}};
+    parameters  params = {{0., 0.},{0.},{0., 0.},{0.}, 0, 0};
+
+    //    params.src_x = 2 + ceil(LAMBDA / 4 / DY);
+    params.src_x = 3;
+    params.src_y = round(NY/2);
 
     int i, j;
     for (i = 0; i < NX; i++) {
@@ -84,13 +91,23 @@ int main() {
             params.mu[i] = 1;
             params.ec[i][j] = 0;
             params.mc[i] = 0;
-            if (i > NX / 2) {
-//                params.eps[i][j] = 3;
-//                params.ec[i][j] = 1;
-            }
-//            else {
-//                params.eps[i] = 10;
+//            if (i > NX / 2 && i < (NX/2 + (int)(LAMBDA/DX))) {
+//                params.eps[i][j] = 4;
+////                params.ec[i][j] = 1;
 //            }
+            // rectangular waveguide - define conductive boundaries
+            int x1 = params.src_x - 1; // starting x location
+//            int x2 = NX - 1; // ending x location
+            int wav_wid = LAMBDA / 2 / DY;
+            int y1 = params.src_y - floor(wav_wid/2); // min y value (bottom)
+            int y2 = params.src_y + ceil(wav_wid/2); // max y value (top)
+            if ((i > floor(x1 - 1) && i < floor(x1 + 1) && j > floor(y1 - 1) && j < floor(y2 + 1))
+//                    || (i > floor(x2 - 1) && i < floor(x2 + 1) && j > floor(y1 - 1) && j < floor(y2 + 1))
+                    || (j > floor(y1 - 1) && j < floor(y1 + 1) && i > floor(x1 - 1))
+                    || (j > floor(y2 - 1) && j < floor(y2 + 1) && i > floor(x1 - 1))
+                    ){
+                params.ec[i][j] = 2;
+            }
         }
     }
 
@@ -104,13 +121,13 @@ void compute(field *E, field *H, current *J, current *M, parameters *params) {
     // time-stepping loop
     std::cout << "Starting Simulation..." << std::endl;
     int t;
-    std::string test_name = "sine_src";
+    std::string test_name = "waveguide3";
     std::string output_file = "/Users/williampoland/FDTD/2D/raw/" + test_name + ".txt";
     std::ofstream myfile (output_file);
-    myfile << "T_MAX; NX; NY" << std::endl;
-    myfile << T_MAX << std::endl << NX << std::endl << NY << std::endl;
+    myfile << "FREQ T_MAX NX NY DT DX DY" << std::endl;
+    myfile << FREQ << " " << T_MAX << " " << NX << " " << NY << " " << DT << " " << DX << " " << DY << std::endl;
 //    myfile << "(t, x, y, z, Ez, Hx, Hy, eps_r, mu_r, e_cond, m_cond)" << std::endl;
-    myfile << "(t, x, y, Ez)" << std::endl;
+    myfile << "(t, x, y, Ez, ec)" << std::endl;
 
     // initialize variables for boundary conditions
     // these will store the past values of for edges of grid
@@ -171,7 +188,9 @@ void compute(field *E, field *H, current *J, current *M, parameters *params) {
 //        E->z[NX/2][NY/2] = 1.5 * exp(-(t - delay) * (t - delay) / width);
 //            E->z[NX/2][NY/2] = 1;
 //        E->z[NX/2][NY/2] = sin(CNO*BETA*t);
-        E->z[NX/2][NY/2] = sin(1*t);
+        // source for waveguide sim
+        E->z[params->src_x][params->src_y] = sin(OMEGA*t*DT);
+//        E->z[params->src_x][params->src_y] = sin(t);
         // vertical plane wave
 //        for (int i = 0; i < NX; i++) {
 ////            E->z[i][0] = sin(t);
@@ -263,7 +282,7 @@ void compute(field *E, field *H, current *J, current *M, parameters *params) {
             std::cout << "Writing to file...[t=" << t << "]" << std::endl;
             for (x = 0; x < NX; x++) {
                 for (y = 0; y <NY; y++) {
-                    myfile << t << " " << x << " " << y << " " << E->z[x][y] << std::endl;
+                    myfile << t << " " << x << " " << y << " " << E->z[x][y] << " " << params->ec[x][y] << std::endl;
 //                    myfile << t << " " << x << " " << y << " "
 //                        << E->z[x][y] << " " << H->x[x][y] << " " << H->y[x][y] << " "
 //                        << params->eps[x] << " " << params->mu[x] << " " << params->ec[x] << " " << params->mc[x]
