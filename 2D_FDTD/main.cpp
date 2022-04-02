@@ -11,7 +11,8 @@
 #define MU_0 (M_PI*4e-7)
 
 /* CUSTOMIZABLE VALUES */
-#define FREQ 300e6
+#define FREQ 10e9 // used for scaling simulation parameters (DT, DX, etc.)
+#define PROP_FREQ FREQ // used for source wave
 
 #define FRAC 20. // fraction of wavelength for spatial step (spatial resolution of grid)
 #define CNO (0.7071) // Courant Number - stability factor
@@ -20,7 +21,8 @@
 /* calculate useful values */
 #define LAMBDA (C/FREQ) // wavelength
 #define OMEGA (2*M_PI*FREQ)
-#define BETA (OMEGA/C) // phase constant
+#define PROP_OMEGA (2*M_PI*PROP_FREQ)
+//#define BETA (OMEGA/C) // phase constant
 
 /* define bounds of our simulation */
 #define DX (LAMBDA/FRAC)
@@ -55,14 +57,15 @@ struct current {
 
 };
 
-// Parameters of the medium
+// Parameters of the simulation
 struct parameters {
-    double eps[NX][NY]; // relative permittivity
-    double mu[NX]; // relative permeability
-    double ec[NX][NY]; // electrical conductivity
-    double mc[NX]; // magnetic conductivity
+    double eps[NX][NY]; // relative permittivity of medium
+    double mu[NX]; // relative permeability of medium
+    double ec[NX][NY]; // electrical conductivity of medium
+    double mc[NX]; // magnetic conductivity of medium
     int src_x; // x coordinate of source
     int src_y; // y coordinate of source
+    std::string test_name; // name of the output .txt file
 };
 
 /* function headers */
@@ -78,10 +81,13 @@ int main() {
     field H = {{0.,0.},{0.,0. },{0.,0. }};
     current J = {{0.},{0.},{0.}};
     current M = {{0.},{0.},{0.}};
-    parameters  params = {{0., 0.},{0.},{0., 0.},{0.}, 0, 0};
+    parameters  params = {{0., 0.},{0.},{0., 0.},{0.}, 0, 0, ""};
 
-    //    params.src_x = 2 + ceil(LAMBDA / 4 / DY);
-    params.src_x = 3;
+    // adjust name of simulation output file
+    params.test_name = "poster_empty_10GHz";
+
+    params.src_x = 10;
+//    params.src_x = 3;
     params.src_y = round(NY/2);
 
     int i, j;
@@ -92,13 +98,14 @@ int main() {
             params.ec[i][j] = 0;
             params.mc[i] = 0;
 //            if (i > NX / 2 && i < (NX/2 + (int)(LAMBDA/DX))) {
-//                params.eps[i][j] = 4;
-////                params.ec[i][j] = 1;
+//                params.eps[i][j] = 1;
 //            }
             // rectangular waveguide - define conductive boundaries
-            int x1 = params.src_x - 1; // starting x location
+            int x1 = params.src_x - + round(LAMBDA / 4 / DY); // starting x location
+//            x1 = params.src_x - 2;
 //            int x2 = NX - 1; // ending x location
-            int wav_wid = LAMBDA / 2 / DY;
+//            int wav_wid = 1.4 * LAMBDA / 2 / DY; // make width >lambda/2 to avoid cutoff
+            int wav_wid = 22.86e-3 / DY; // width of WR90 waveguide at 10GHz frequency
             int y1 = params.src_y - floor(wav_wid/2); // min y value (bottom)
             int y2 = params.src_y + ceil(wav_wid/2); // max y value (top)
             if ((i > floor(x1 - 1) && i < floor(x1 + 1) && j > floor(y1 - 1) && j < floor(y2 + 1))
@@ -106,8 +113,15 @@ int main() {
                     || (j > floor(y1 - 1) && j < floor(y1 + 1) && i > floor(x1 - 1))
                     || (j > floor(y2 - 1) && j < floor(y2 + 1) && i > floor(x1 - 1))
                     ){
-                params.ec[i][j] = 2;
+                params.ec[i][j] = 1e9;
             }
+            // rectangular waveguide - set dielectric thickness within metal
+            int x3 = round(NX/2);
+            int sample_thickness = 1.1*round(LAMBDA/2/DY); // multiply by factor of 1.1
+
+            if (i > x3 && i < x3 + sample_thickness && j > y1 - 1 && j < y2 + 1)
+//                params.eps[i][j] = 10;
+                ;
         }
     }
 
@@ -121,13 +135,12 @@ void compute(field *E, field *H, current *J, current *M, parameters *params) {
     // time-stepping loop
     std::cout << "Starting Simulation..." << std::endl;
     int t;
-    std::string test_name = "waveguide3";
-    std::string output_file = "/Users/williampoland/FDTD/2D/raw/" + test_name + ".txt";
+    std::string output_file = "/Users/williampoland/FDTD/2D/raw/" + params->test_name + ".txt";
     std::ofstream myfile (output_file);
     myfile << "FREQ T_MAX NX NY DT DX DY" << std::endl;
-    myfile << FREQ << " " << T_MAX << " " << NX << " " << NY << " " << DT << " " << DX << " " << DY << std::endl;
+    myfile << PROP_FREQ << " " << T_MAX << " " << NX << " " << NY << " " << DT << " " << DX << " " << DY << std::endl;
 //    myfile << "(t, x, y, z, Ez, Hx, Hy, eps_r, mu_r, e_cond, m_cond)" << std::endl;
-    myfile << "(t, x, y, Ez, ec)" << std::endl;
+    myfile << "(t, x, y, Ez, eps_r, ec)" << std::endl;
 
     // initialize variables for boundary conditions
     // these will store the past values of for edges of grid
@@ -189,7 +202,7 @@ void compute(field *E, field *H, current *J, current *M, parameters *params) {
 //            E->z[NX/2][NY/2] = 1;
 //        E->z[NX/2][NY/2] = sin(CNO*BETA*t);
         // source for waveguide sim
-        E->z[params->src_x][params->src_y] = sin(OMEGA*t*DT);
+        E->z[params->src_x][params->src_y] = sin(PROP_OMEGA*t*DT);
 //        E->z[params->src_x][params->src_y] = sin(t);
         // vertical plane wave
 //        for (int i = 0; i < NX; i++) {
@@ -282,7 +295,7 @@ void compute(field *E, field *H, current *J, current *M, parameters *params) {
             std::cout << "Writing to file...[t=" << t << "]" << std::endl;
             for (x = 0; x < NX; x++) {
                 for (y = 0; y <NY; y++) {
-                    myfile << t << " " << x << " " << y << " " << E->z[x][y] << " " << params->ec[x][y] << std::endl;
+                    myfile << t << " " << x << " " << y << " " << E->z[x][y] << " " << params->eps[x][y] << " " << params->ec[x][y] << std::endl;
 //                    myfile << t << " " << x << " " << y << " "
 //                        << E->z[x][y] << " " << H->x[x][y] << " " << H->y[x][y] << " "
 //                        << params->eps[x] << " " << params->mu[x] << " " << params->ec[x] << " " << params->mc[x]
