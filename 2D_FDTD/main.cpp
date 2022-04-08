@@ -60,9 +60,9 @@ struct current {
 // Parameters of the simulation
 struct parameters {
     double eps[NX][NY]; // relative permittivity of medium
-    double mu[NX]; // relative permeability of medium
+    double mu[NX][NY]; // relative permeability of medium
     double ec[NX][NY]; // electrical conductivity of medium
-    double mc[NX]; // magnetic conductivity of medium
+    double mc[NX][NY]; // magnetic conductivity of medium
     int src_x; // x coordinate of source
     int src_y; // y coordinate of source
     std::string test_name; // name of the output .txt file
@@ -81,7 +81,7 @@ int main() {
     field H = {{0.,0.},{0.,0. },{0.,0. }};
     current J = {{0.},{0.},{0.}};
     current M = {{0.},{0.},{0.}};
-    parameters  params = {{0., 0.},{0.},{0., 0.},{0.}, 0, 0, ""};
+    parameters  params = {{0., 0.},{0.,0.},{0., 0.},{0., 0.}, 0, 0, ""};
 
     // adjust name of simulation output file
     params.test_name = "poster_empty_10GHz";
@@ -94,9 +94,9 @@ int main() {
     for (i = 0; i < NX; i++) {
         for (j = 0; j < NY; j++) {
             params.eps[i][j] = 1;
-            params.mu[i] = 1;
+            params.mu[i][j] = 1;
             params.ec[i][j] = 0;
-            params.mc[i] = 0;
+            params.mc[i][j] = 0;
 //            if (i > NX / 2 && i < (NX/2 + (int)(LAMBDA/DX))) {
 //                params.eps[i][j] = 1;
 //            }
@@ -155,31 +155,31 @@ void compute(field *E, field *H, current *J, current *M, parameters *params) {
         int x, y;
         // step 1 - [TMz] Hx, Hy, Ez
 
-        // Update HX
+        // Update Hx
         double cf_Hx, C_Hx_H, C_Hx_E; // coefficients for Hx
         for (x = 0; x < NX ; x++) {
             for (y = 0; y < NY - 1; y++) {
-                cf_Hx = params->mc[x] * DT / 2 / MU_0 / params->mu[x];
+                cf_Hx = params->mc[x][y] * DT / 2 / MU_0 / params->mu[x][y];
                 C_Hx_H = (1 - cf_Hx) / (1 + cf_Hx);
-                C_Hx_E =  DT / MU_0 / params->mu[x] / DX / (1 + cf_Hx);
+                C_Hx_E =  DT / MU_0 / params->mu[x][y] / DX / (1 + cf_Hx);
 
                 H->x[x][y] = C_Hx_H * H->x[x][y] - C_Hx_E * (E->z[x][y+1] - E->z[x][y]);
             }
         }
 
-        // Update HY
+        // Update Hy
         double cf_Hy, C_Hy_H, C_Hy_E; // coefficients for Hy
         for (x = 0; x < NX - 1 ; x++) {
             for (y = 0; y < NY; y++) {
-                cf_Hy = params->mc[x] * DT / 2 / MU_0 / params->mu[x];
+                cf_Hy = params->mc[x][y] * DT / 2 / MU_0 / params->mu[x][y];
                 C_Hy_H = (1 - cf_Hy) / (1 + cf_Hy);
-                C_Hy_E = DT / MU_0 / params->mu[x] / DY / (1 + cf_Hy);
+                C_Hy_E = DT / MU_0 / params->mu[x][y] / DY / (1 + cf_Hy);
 
                 H->y[x][y] = C_Hy_H * H->y[x][y] + C_Hy_E * (E->z[x+1][y] - E->z[x][y]);
             }
         }
 
-        // Update EZ
+        // Update Ez
         double cf_Ez, C_Ez_E, C_Ez_H;
         for (x = 1; x < NX - 1; x++) {
             for (y = 1; y < NY - 1; y++) {
@@ -188,6 +188,44 @@ void compute(field *E, field *H, current *J, current *M, parameters *params) {
                 C_Ez_H = DT / EPS_0 / params->eps[x][y] / DY / (1 + cf_Ez);
 
                 E->z[x][y] = C_Ez_E * E->z[x][y] + C_Ez_H * ((H->y[x][y] - H->y[x-1][y]) - (H->x[x][y] - H->x[x][y-1]));
+            }
+        }
+
+        // step 2 - [TEz] Ex, Ey, Hz
+
+        // Update Ex
+        double cf_Ex, C_Ex_E, C_Ex_H;
+        for (x = 0; x < NX - 1; x++) {
+            for (y = 1; y < NY - 1; y++) {
+                cf_Ex = params->ec[x][y] * DT / 2 / EPS_0 / params->eps[x][y];
+                C_Ex_E = (1 - cf_Ex) / (1 + cf_Ex);
+                C_Ex_H = DT / EPS_0 / params->eps[x][y] / DX / (1 + cf_Ex);
+
+                E->x[x][y] = C_Ex_E * E->x[x][y] + C_Ex_H * (H->z[x][y] - H->z[x][y-1]);
+            }
+        }
+
+        // Update Ey
+        double cf_Ey, C_Ey_E, C_Ey_H;
+        for (x = 1; x < NX - 1; x++) {
+            for (y = 0; y < NY - 1; y++) {
+                cf_Ey = params->ec[x][y] * DT / 2 / EPS_0 / params->eps[x][y];
+                C_Ey_E = (1 - cf_Ey) / (1 + cf_Ey);
+                C_Ey_H = DT / EPS_0 / params->eps[x][y] / DY / (1 + cf_Ex);
+
+                E->y[x][y] = C_Ey_E * E->y[x][y] + C_Ey_H * (H->z[x][y] - H->z[x-1][y]);
+            }
+        }
+
+        // Update Hz
+        double cf_Hz, C_Hz_E, C_Hz_H;
+        for (x = 0; x < NX - 1; x++) {
+            for (y = 0; y < NY - 1; y++) {
+                cf_Hz = params->mc[x][y] * DT / 2 / MU_0 / params->mu[x][y];
+                C_Hz_H = (1 - cf_Hz) / (1 + cf_Hz);
+                C_Hz_E = DT / MU_0 / params->mu[x][y] / DX / (1 + cf_Ex);
+
+                H->z[x][y] = C_Hz_H * H->z[x][y] + C_Hz_E * ((E->x[x][y+1] - E->x[x][y]) - (E->y[x+1][y] - E->y[x][y]));
             }
         }
 
@@ -220,23 +258,27 @@ void compute(field *E, field *H, current *J, current *M, parameters *params) {
 
 
 
-        /* second order ABCs for x = 0, x = NX, y = 0, y = NY */
+        /* second order ABCs for Ex,Ey,Ez @ x = 0, x = NX, y = 0, y = NY */
+
         // calculate coefficients
         cf_Ez = params->ec[0][0] * DT / 2 / EPS_0 / params->eps[0][0];
         C_Ez_H = DT / EPS_0 / params->eps[0][0] / DY / (1 + cf_Ez);
 
-        cf_Hy = params->mc[0] * DT / 2 / MU_0 / params->mu[0];
-        C_Hy_E = DT / MU_0 / params->mu[0] / DY / (1 + cf_Hy);
+        cf_Hy = params->mc[0][0] * DT / 2 / MU_0 / params->mu[0][0];
+        C_Hy_E = DT / MU_0 / params->mu[0][0] / DY / (1 + cf_Hy);
 
-        double temp1 = sqrt(C_Ez_H * C_Hy_E);
-        double temp2 = 1. / temp1 +  2. + temp1;
-        double cf0 = -(1. / temp1 - 2. + temp1) / temp2;
-        double cf1 = -2. * (temp1 - 1. / temp1) / temp2;
-        double cf2 = 4. * (temp1 + 1. / temp1) / temp2;
+        double temp1_TM = sqrt(C_Ez_H * C_Hy_E);
+        double temp2_TM = 1. / temp1_TM + 2. + temp1_TM;
+        double cf0 = -(1. / temp1_TM - 2. + temp1_TM) / temp2_TM;
+        double cf1 = -2. * (temp1_TM - 1. / temp1_TM) / temp2_TM;
+        double cf2 = 4. * (temp1_TM + 1. / temp1_TM) / temp2_TM;
+
 
         // ABCs @ x=0 & x=NX
         for (y = 0; y < NY; y++) {
             // calculate ABC @ x=0
+//            E->y[0][y] = 0;
+
             E->z[0][y] = cf0 * (E->z[2][y] + Ez_old_left[0][1][y])
                 + cf1 * (Ez_old_left[0][0][y] + Ez_old_left[2][0][y] - E->z[1][y] - Ez_old_left[1][1][y])
                 + cf2 * Ez_old_left[1][0][y]
@@ -248,6 +290,8 @@ void compute(field *E, field *H, current *J, current *M, parameters *params) {
             }
 
             // calculate ABC @ x=NX
+//            E->x[NX - 1][y] = 0;
+
             E->z[NX - 1][y] = cf0 * (E->z[NX - 3][y] + Ez_old_right[0][1][y])
                 + cf1 * (Ez_old_right[0][0][y] + Ez_old_right[2][0][y] - E->z[NX - 2][y] - Ez_old_right[1][1][y])
                 + cf2 * Ez_old_right[1][0][y]
@@ -261,6 +305,8 @@ void compute(field *E, field *H, current *J, current *M, parameters *params) {
         // ABCs @ y=0 & y=NY
         for (x = 0; x <NX; x++) {
             // calculate ABC @ y=0
+//            E->x[x][0] = 0;
+
             E->z[x][0] = cf0 * (E->z[x][2] + Ez_old_down[0][1][x])
                 + cf1 * (Ez_old_down[0][0][x] + Ez_old_down[2][0][x] - E->z[x][1] - Ez_old_down[1][1][x])
                 + cf2 * Ez_old_down[1][0][x]
@@ -272,6 +318,8 @@ void compute(field *E, field *H, current *J, current *M, parameters *params) {
             }
 
             // calculate ABC @ y=NY
+//            E->x[x][NY - 1] = 0;
+
             E->z[x][NY - 1] = cf0 * (E->z[x][NY - 3] + Ez_old_up[0][1][x])
                 + cf1 * (Ez_old_up[0][0][x] + Ez_old_up[2][0][x] - E->z[x][NY - 2] - Ez_old_up[1][1][x])
                 + cf2 * Ez_old_up[1][0][x]
