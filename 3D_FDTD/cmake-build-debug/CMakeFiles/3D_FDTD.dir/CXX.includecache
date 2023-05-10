@@ -1,0 +1,16 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/Users/williampoland/Documents/GitHub/FDTD/3D_FDTD/main.cpp
+iostream
+-
+fstream
+-
+cmath
+-
+

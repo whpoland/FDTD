@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <cmath>
+#include <array>
 //#include "matplotlib-cpp-master/matplotlibcpp.h"
 
 //namespace plt = matplotlibcpp;
@@ -11,10 +12,10 @@
 #define MU_0 (M_PI*4e-7)
 
 /* CUSTOMIZABLE VALUES */
-#define FREQ 10e9 // used for scaling simulation parameters (DT, DX, etc.)
+#define FREQ 5.9e9 // used for scaling simulation parameters (DT, DX, etc.)
 #define PROP_FREQ FREQ // used for source wave
 
-#define FRAC 20. // fraction of wavelength for spatial step (spatial resolution of grid)
+#define FRAC 10. // fraction of wavelength for spatial step (spatial resolution of grid) *Should be 20 for high accuracy*
 #define CNO (0.7071) // Courant Number - stability factor
 
 
@@ -33,43 +34,38 @@
 //#define Z_MAX Y_MAX
 //#define N (int)ceil(X_MAX/DX)
 
-#define T_MAX 200 // how long the simulation will run
+
+#define T_MAX 1000 // how long the simulation will run
+//#define T_MAX 20 * round(1.0/FREQ/DT) //in terms of number of periods
 //#define N (int)(FRAC * 3 / 2) // spatial size of grid
-#define N 101
+#define N 1000
 #define NX N
 #define NY NX
 
+#define GEO_PRECISION double
+#define PRECISION float
+
 //const int T_MAX, N, NX, NY;
 
-// Create a struct template for E,H fields (to contain x,y,z,cond components)
+// Create a struct template for E,H fields (to contain x,y,z, components)
 struct field {
-    double x[NX][NY]; // x component (x,y)
-    double y[NX][NY]; // y component (x,y)
-    double z[NX][NY]; // z component (x,y)
-
-};
-
-// Create a struct template for J,M fields (to contain x,y,z components)
-struct current {
-    double x[NX]; // x component
-    double y[NX]; // y component
-    double z[NX]; // z component
-
+    std::array<std::array<PRECISION,NX>,NY> x;
+    std::array<std::array<PRECISION,NX>,NY> y;
+    std::array<std::array<PRECISION,NX>,NY> z;
 };
 
 // Parameters of the simulation
 struct parameters {
-    double eps[NX][NY]; // relative permittivity of medium
-    double mu[NX][NY]; // relative permeability of medium
-    double ec[NX][NY]; // electrical conductivity of medium
-    double mc[NX][NY]; // magnetic conductivity of medium
-    int src_x; // x coordinate of source
-    int src_y; // y coordinate of source
+    std::array<std::array<GEO_PRECISION,NX>,NY> eps; // relative permittivity of medium
+    std::array<std::array<GEO_PRECISION,NX>,NY> mu; // relative permeability of medium
+    std::array<std::array<GEO_PRECISION,NX>,NY> ec; // electrical conductivity of medium
+    std::array<std::array<GEO_PRECISION,NX>,NY> mc;  // magnetic conductivity of medium
+
     std::string test_name; // name of the output .txt file
 };
 
 /* function headers */
-void compute(field *E, field *H, current *J, current *M, parameters *params);
+void compute(field *E, field *H, field *J, field *M, parameters *params);
 
 int main() {
     std::cout << "Initializing Simulation..." << std::endl;
@@ -77,80 +73,144 @@ int main() {
     std::cout << " | DX: " << DX << " | DY: " << DY << " | DT: " << DT << std::endl;
 
 //  Initialize fields
-    field E = {{0.,0.},{0.,0. },{0.,0. }};
-    field H = {{0.,0.},{0.,0. },{0.,0. }};
-    current J = {{0.},{0.},{0.}};
-    current M = {{0.},{0.},{0.}};
-    parameters  params = {{0., 0.},{0.,0.},{0., 0.},{0., 0.}, 0, 0, ""};
-
+    field *E = new field;
+    field *H = new field;
+    field *J = nullptr;
+    field *M = nullptr;
+    parameters *params = new parameters;
     // adjust name of simulation output file
-    params.test_name = "poster_empty_10GHz";
+    params->test_name = "indoor2";
 
-    params.src_x = 10;
-//    params.src_x = 3;
-    params.src_y = round(NY/2);
-
-    int i, j;
+    int i, j; // i is x location, j is y location
     for (i = 0; i < NX; i++) {
         for (j = 0; j < NY; j++) {
-            params.eps[i][j] = 1;
-            params.mu[i][j] = 1;
-            params.ec[i][j] = 0;
-            params.mc[i][j] = 0;
-//            if (i > NX / 2 && i < (NX/2 + (int)(LAMBDA/DX))) {
-//                params.eps[i][j] = 1;
-//            }
-            // rectangular waveguide - define conductive boundaries
-            int x1 = params.src_x - + round(LAMBDA / 4 / DY); // starting x location
-//            x1 = params.src_x - 2;
-//            int x2 = NX - 1; // ending x location
-//            int wav_wid = 1.4 * LAMBDA / 2 / DY; // make width >lambda/2 to avoid cutoff
-            int wav_wid = 22.86e-3 / DY; // width of WR90 waveguide at 10GHz frequency
-            int y1 = params.src_y - floor(wav_wid/2); // min y value (bottom)
-            int y2 = params.src_y + ceil(wav_wid/2); // max y value (top)
-            if ((i > floor(x1 - 1) && i < floor(x1 + 1) && j > floor(y1 - 1) && j < floor(y2 + 1))
-//                    || (i > floor(x2 - 1) && i < floor(x2 + 1) && j > floor(y1 - 1) && j < floor(y2 + 1))
-                    || (j > floor(y1 - 1) && j < floor(y1 + 1) && i > floor(x1 - 1))
-                    || (j > floor(y2 - 1) && j < floor(y2 + 1) && i > floor(x1 - 1))
-                    ){
-                params.ec[i][j] = 1e9;
-            }
-            // rectangular waveguide - set dielectric thickness within metal
-            int x3 = round(NX/2);
-            int sample_thickness = 1.1*round(LAMBDA/2/DY); // multiply by factor of 1.1
+            // defaults
+            E->x[i][j] = 0;
+            E->y[i][j] = 0;
+            E->z[i][j] = 0;
+            H->x[i][j] = 0;
+            H->y[i][j] = 0;
+            H->z[i][j] = 0;
+            params->eps[i][j] = 1;
+            params->mu[i][j] = 1;
+            params->ec[i][j] = 0;
+            params->mc[i][j] = 0;
+            // add in conditions to modify material properties at specific points (i.e. add dielectrics and conductors)
 
-            if (i > x3 && i < x3 + sample_thickness && j > y1 - 1 && j < y2 + 1)
-//                params.eps[i][j] = 10;
-                ;
+
+            // ECE 4124 Final: Indoor Propagation
+            double wall_eps = 2.8;
+            double wall_cond = 0.0115;
+            double door_eps = 2.13;
+            double door_cond = 0.7;
+            int thickness = 3;
+            int doorlen = 12;
+
+            // indoor rooms
+            if (((i >= 0 && i <= 0 + thickness) || (i >= NX-1-thickness && i <= NX-1)) || // vertical outer walls
+                ((j >= 0 && j <= 0 + thickness) || (j >= NY-1-thickness && j <= NY-1)) || // horizontal outer walls
+                ((j >= 2*NY/5-thickness && j <= 2*NY/5) || (j >= 3*NY/5-thickness && j <= 3*NY/5)) || // horizontal inner walls
+                ((j <= 2*NY/5-thickness || j >= 3*NY/5) && ((i >= NX/3-thickness && i <= NX/3) ||   // -- vertical inner walls
+                                                            (i >= 2*NX/3-thickness && i <= 2*NX/3)))  // -- vertical inner walls
+                ) {
+                params->eps[i][j] = wall_eps;
+                params->ec[i][j] = wall_cond;
+            }
+            // doors
+            if (((j >= 2*NY/5-thickness && j <= 2*NY/5) || (j >= 3*NY/5-thickness && j <= 3*NY/5)) &&
+                    ((i >= NX/6-doorlen/2  && i <= NX/6+doorlen/2) ||
+                     (i >= 3*NX/6-doorlen/2 && i <= 3*NX/6+doorlen/2) ||
+                     (i >= 5*NX/6-doorlen/2 && i <= 5*NX/6+doorlen/2))
+                     ) {
+                params->eps[i][j] = door_eps;
+                params->ec[i][j] = door_cond;
+            }
+
+
+            //***************************** properties for ECE 4124 Project 2 ******************************
+            // diffraction pattern
+//            if (i == NX / 2) {
+//                if ((j < NX / 3 + 5 && j > NX / 3 - 5) || (j < 2 * NX / 3 + 5 && j > 2 * NX / 3 - 5)) {
+//                    continue;
+//                }
+//                else {
+//                    params.ec[i][j] = 1e9;
+//                }
+//            }
+//            if (i == NX / 2 && (j/20) % 2 == 0) {
+//                    params.ec[i][j] = 1e9;
+//            }
+
+            // knife edge
+//            if (i == NX / 2 && j < NY / 2) { // half plane
+////            if (i == NX / 2 && j < 3 * NY / 4) { // 3/4 plane
+//                params.ec[i][j] = 1e9;
+//            }
+            // round edge
+//            if ((i-NX/2)*(i-NX/2) + (j-NY/2)*(j-NY/2) <= 25) {
+//                params.ec[i][j] = 1e9;
+//            }
+//            if (j < NY/2 && (i == NX/2-5 || i == NX/2+5)) {
+//                params.ec[i][j] = 1e9;
+//            }
+
+
+            // ground plane -- might have issues
+//            if (j == 1) {
+//                params.ec[i][j] = 1e9;
+//            }
+            //*******************************************************************************************************
+
+            // ****************** setting conductor boundaries for waveguide simulation *********************************************
+//            // rectangular waveguide - define conductive boundaries
+//            int x1 = params.src_x - + round(LAMBDA / 4 / DY); // starting x location
+////            x1 = params.src_x - 2;
+////            int x2 = NX - 1; // ending x location
+////            int wav_wid = 1.4 * LAMBDA / 2 / DY; // make width >lambda/2 to avoid cutoff
+//            int wav_wid = 22.86e-3 / DY; // width of WR90 waveguide at 10GHz frequency
+//            int y1 = params.src_y - floor(wav_wid/2); // min y value (bottom)
+//            int y2 = params.src_y + ceil(wav_wid/2); // max y value (top)
+//            if ((i > floor(x1 - 1) && i < floor(x1 + 1) && j > floor(y1 - 1) && j < floor(y2 + 1))
+////                    || (i > floor(x2 - 1) && i < floor(x2 + 1) && j > floor(y1 - 1) && j < floor(y2 + 1))
+//                    || (j > floor(y1 - 1) && j < floor(y1 + 1) && i > floor(x1 - 1))
+//                    || (j > floor(y2 - 1) && j < floor(y2 + 1) && i > floor(x1 - 1))
+//                    ){
+//                params.ec[i][j] = 1e9;
+//            }
+//            // rectangular waveguide - set dielectric thickness within metal
+//            int x3 = round(NX/2);
+//            int sample_thickness = 1.1*round(LAMBDA/2/DY); // multiply by factor of 1.1
+//
+//            if (i > x3 && i < x3 + sample_thickness && j > y1 - 1 && j < y2 + 1)
+////                params.eps[i][j] = 10;
+//                ;
+            // ************************************************************************************************************
         }
     }
 
     // run the simulation and store in file
-    compute(&E, &H, &J, &M, &params);
+    compute(E, H, J, M, params); // J and M are currently declared as nullptr
 
     return 0;
 }
 
-void compute(field *E, field *H, current *J, current *M, parameters *params) {
+void compute(field *E, field *H, field *J, field *M, parameters *params) {
     // time-stepping loop
     std::cout << "Starting Simulation..." << std::endl;
     int t;
-    std::string output_file = "/Users/williampoland/FDTD/2D/raw/" + params->test_name + ".txt";
-    std::ofstream myfile (output_file);
-    myfile << "FREQ T_MAX NX NY DT DX DY" << std::endl;
-    myfile << PROP_FREQ << " " << T_MAX << " " << NX << " " << NY << " " << DT << " " << DX << " " << DY << std::endl;
-//    myfile << "(t, x, y, z, Ez, Hx, Hy, eps_r, mu_r, e_cond, m_cond)" << std::endl;
-    myfile << "(t, x, y, Ez, eps_r, ec)" << std::endl;
+    std::string file_path = "/Users/williampoland/FDTD/2D/raw/";
+    std::string output_file_name = "/Users/williampoland/FDTD/2D/raw/" + params->test_name + ".txt";
+    std::string geometry_file_name = file_path + params->test_name + "_geometry.txt";
+    std::ofstream myfile (output_file_name); // file to output E field data
+    std::ofstream geofile (geometry_file_name); // file to output geometry and simulation parameters
 
-    // initialize variables for boundary conditions
-    // these will store the past values of for edges of grid
-    // 1st index - displacement from edge of boundary
-    // 2nd index - previous time displacement
-    // 3rd index - location along boundary
-    const int num_disp = 3, time_disp = 2;
-    double Ez_old_up[num_disp][time_disp][NX] = {0.,0.}, Ez_old_down[num_disp][time_disp][NX] = {0.,0.},
-        Ez_old_left[num_disp][time_disp][NY] = {0.,0.}, Ez_old_right[num_disp][time_disp][NY] ={0.,0.};
+    geofile << "FREQ T_MAX NX NY DT DX DY" << std::endl;
+    geofile << PROP_FREQ << " " << T_MAX << " " << NX << " " << NY << " " << DT << " " << DX << " " << DY << std::endl;
+    geofile << "(eps_r, ele_cond)" << std::endl;
 
+    myfile << "(Ex, Ey, Ez)" << std::endl;
+
+    // FDTD simulation
     for (t = 0; t < T_MAX; t++) {
         int x, y;
         // step 1 - [TMz] Hx, Hy, Ez
@@ -211,7 +271,7 @@ void compute(field *E, field *H, current *J, current *M, parameters *params) {
             for (y = 0; y < NY - 1; y++) {
                 cf_Ey = params->ec[x][y] * DT / 2 / EPS_0 / params->eps[x][y];
                 C_Ey_E = (1 - cf_Ey) / (1 + cf_Ey);
-                C_Ey_H = DT / EPS_0 / params->eps[x][y] / DY / (1 + cf_Ex);
+                C_Ey_H = DT / EPS_0 / params->eps[x][y] / DY / (1 + cf_Ey);
 
                 E->y[x][y] = C_Ey_E * E->y[x][y] + C_Ey_H * (H->z[x][y] - H->z[x-1][y]);
             }
@@ -223,40 +283,69 @@ void compute(field *E, field *H, current *J, current *M, parameters *params) {
             for (y = 0; y < NY - 1; y++) {
                 cf_Hz = params->mc[x][y] * DT / 2 / MU_0 / params->mu[x][y];
                 C_Hz_H = (1 - cf_Hz) / (1 + cf_Hz);
-                C_Hz_E = DT / MU_0 / params->mu[x][y] / DX / (1 + cf_Ex);
+                C_Hz_E = DT / MU_0 / params->mu[x][y] / DX / (1 + cf_Hz);
 
                 H->z[x][y] = C_Hz_H * H->z[x][y] + C_Hz_E * ((E->x[x][y+1] - E->x[x][y]) - (E->y[x+1][y] - E->y[x][y]));
             }
         }
-
+        // ********************* SET SOURCES ************************************************************************************
         /* create source node */
         // Note: source nodes cannot be on boundaries x=0,x=NX,y=0,y=NY because of the absorbing boundaries
         // Source nodes for grid edges should be placed one node from the edge of grid (i.e. x=1 or y=NY-1)
+        // Can create hardwired or additive sources: hardwired - enforce field at a point; additive - add to field at a point
         int delay = 0;
         int width = N/16;
+        int period = 1 / PROP_FREQ / DT;
         // hard-wired source
+
+        // indoor propagation simulation (TMz & TEz)
+        float src_mag = 0.632;
+        E->z[NX/2][NY/2] += src_mag * sin(PROP_OMEGA * t * DT);
+        E->x[NX/2][NY/2] += E->z[NX/2][NY/2];
+        E->y[NX/2][NY/2] += E->z[NX/2][NY/2];
+
 //        E->z[1][1] = exp(-(t - 30.) * (t - 30.) / 100.);
 //        E->z[NX/2][NY/2] = 1.5 * exp(-(t - delay) * (t - delay) / width);
-//            E->z[NX/2][NY/2] = 1;
-//        E->z[NX/2][NY/2] = sin(CNO*BETA*t);
         // source for waveguide sim
-        E->z[params->src_x][params->src_y] = sin(PROP_OMEGA*t*DT);
-//        E->z[params->src_x][params->src_y] = sin(t);
+//        E->z[params->src_x][params->src_y] = sin(PROP_OMEGA*t*DT);
         // vertical plane wave
 //        for (int i = 0; i < NX; i++) {
 ////            E->z[i][0] = sin(t);
 //            E->z[i][1] = exp(-(t - delay) * (t - delay) / width);
 //        }
-        // horizontal plane wave
-//        for (int j = 0; j < NY; j++) {
-//            E->z[1][j] = sin(0.5 * t);
-////           E->z[1][j] = 1.5 * exp(-(t - delay) * (t - delay) / width);
+        // spherical wave
+//        E->z[1][3*NY/4] = sin(PROP_OMEGA * t * DT);
+//         *** horizontal plane wave ***
+//        for (int j = 1; j < NY; j++) {
+//            E->z[1][j] = sin(PROP_OMEGA * t * DT);
+            // turn off source after one period
+//            if (t <= period) {
+//                E->z[1][j] = sin(PROP_OMEGA * t * DT);
+//            }
+//            else {
+//                E->z[1][j] = 0;
+//            }
+//           E->z[1][j] = exp(-(t - delay) * (t - delay) / width);
 //        }
         // additive source
 //        E->z[NX/2][NY/2] += 1.5*exp(-(t - delay) * (t - delay) / width);
 
+        // ***************************************************************************************************
 
-
+        // ****************************************   ABCs    ************************************************
+        // initialize variables for boundary conditions
+        // these will store the past values of for edges of grid
+        // 1st index - displacement from edge of boundary
+        // 2nd index - previous time displacement
+        // 3rd index - location along boundary
+        const int num_disp = 3, time_disp = 2;
+        double
+//        Ex_old_up[num_disp][time_disp][NX] = {0.,0.}, Ex_old_down[num_disp][time_disp][NX] = {0.,0.},
+//                Ex_old_left[num_disp][time_disp][NY] = {0.,0.}, Ex_old_right[num_disp][time_disp][NY] ={0.,0.},
+//                Ey_old_up[num_disp][time_disp][NX] = {0.,0.}, Ey_old_down[num_disp][time_disp][NX] = {0.,0.},
+//                Ey_old_left[num_disp][time_disp][NY] = {0.,0.}, Ey_old_right[num_disp][time_disp][NY] ={0.,0.},
+                Ez_old_up[num_disp][time_disp][NX] = {0.,0.}, Ez_old_down[num_disp][time_disp][NX] = {0.,0.},
+                Ez_old_left[num_disp][time_disp][NY] = {0.,0.}, Ez_old_right[num_disp][time_disp][NY] ={0.,0.};
 
         /* second order ABCs for Ex,Ey,Ez @ x = 0, x = NX, y = 0, y = NY */
 
@@ -335,15 +424,30 @@ void compute(field *E, field *H, current *J, current *M, parameters *params) {
 
 
 
-//        for (int)
 
         // now write relevant data to file
-        if (myfile.is_open())
-        {
+        if (t == 0 && geofile.is_open()) { // only write our geometry details once at time t=0
+            std::cout << "Writing to geometry file" << std::endl;
+            for (x = 0; x < NX; x++) {
+                for (y = 0; y <NY; y++) {
+                    geofile << params->eps[x][y] << " " << params->ec[x][y] << std::endl;
+                }
+            }
+            geofile.close(); // close file when done
+            std::cout << "Finished writing to geometry file" << std::endl;
+        }
+        // write field data to file for each time t
+        if (myfile.is_open()) {
             std::cout << "Writing to file...[t=" << t << "]" << std::endl;
             for (x = 0; x < NX; x++) {
                 for (y = 0; y <NY; y++) {
-                    myfile << t << " " << x << " " << y << " " << E->z[x][y] << " " << params->eps[x][y] << " " << params->ec[x][y] << std::endl;
+//                    myfile << t << " " << x << " " << y << " " << E->z[x][y] << " " << params->eps[x][y] << " " << params->ec[x][y] << std::endl;
+                    myfile << E->x[x][y] << " " << E->y[x][y] << " " << E->z[x][y]  << std::endl;
+
+//                    myfile << t << " " << x << " " << y << " "
+//                            << E->z[x][y] << " "  << sqrt((E->x[x][y]*E->x[x][y]) + (E->y[x][y]*E->y[x][y])) << " "
+//                            << params->eps[x][y] << " " << params->ec[x][y] << std::endl;
+
 //                    myfile << t << " " << x << " " << y << " "
 //                        << E->z[x][y] << " " << H->x[x][y] << " " << H->y[x][y] << " "
 //                        << params->eps[x] << " " << params->mu[x] << " " << params->ec[x] << " " << params->mc[x]
@@ -354,7 +458,10 @@ void compute(field *E, field *H, current *J, current *M, parameters *params) {
         else std::cout << "Unable to open file" << std::endl;
     }
     myfile.close();
-    std::cout << "Finished Writing to File: " << output_file << std::endl;
+    delete E;
+    delete H;
+    delete params;
+    std::cout << "Finished Writing to File: " << output_file_name << std::endl;
     std::cout << "Total entries: " << NX * NY * T_MAX << std::endl;
     std::cout << "Simulation Complete." << std::endl;
 }

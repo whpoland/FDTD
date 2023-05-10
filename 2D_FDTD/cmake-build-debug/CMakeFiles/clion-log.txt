@@ -1,6 +1,6 @@
 /Applications/CLion.app/Contents/bin/cmake/mac/bin/cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_DEPENDS_USE_COMPILER=FALSE -G "CodeBlocks - Unix Makefiles" /Users/williampoland/Documents/GitHub/FDTD/2D_FDTD
--- The C compiler identification is AppleClang 12.0.5.12050022
--- The CXX compiler identification is AppleClang 12.0.5.12050022
+-- The C compiler identification is AppleClang 14.0.3.14030022
+-- The CXX compiler identification is AppleClang 14.0.3.14030022
 -- Detecting C compiler ABI info
 -- Detecting C compiler ABI info - done
 -- Check for working C compiler: /Library/Developer/CommandLineTools/usr/bin/cc - skipped
